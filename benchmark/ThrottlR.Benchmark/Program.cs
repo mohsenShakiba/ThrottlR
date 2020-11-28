@@ -10,6 +10,8 @@ using System.Diagnostics;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Threading;
+using BenchmarkDotNet.Configs;
 using CommandLine;
 
 namespace ThrottlR.Benchmark
@@ -18,7 +20,7 @@ namespace ThrottlR.Benchmark
     {
         private static void Main()
         {
-            BenchmarkRunner.Run<ThrottlerOverheadBenchmark>();
+            BenchmarkRunner.Run<ThrottlerOverheadBenchmark>(new DebugInProcessConfig());
         }
     }
 
@@ -70,16 +72,64 @@ namespace ThrottlR.Benchmark
             }
         }
 
+        // [Benchmark]
+        // public Task<int> WithThrottle()
+        // {
+        //     return Run("/WithThrottle");
+        // }
+        //
+        // [Benchmark]
+        // public Task<int> NoThrottle()
+        // {
+        //     return Run("/NoThrottle");
+        // }
+
         [Benchmark]
-        public Task<int> WithThrottle()
+        public void WithAsyncLock()
         {
-            return Run("/WithThrottle");
+            const string key = "test";
+            const int numThread = 8;
+            var threadList = new List<Task>();
+            var al = new AsyncKeyLock();
+
+            for (var i = 0; i < numThread; i++)
+            {
+                var t = Task.Factory.StartNew(async () =>
+                {
+                    for (var i = 0; i <= 1000; i++)
+                    {
+                        var r = await al.ReaderLockAsync(key + i);
+                        r.Dispose();
+                    }
+                });
+                threadList.Add(t);
+            }
+
+            Task.WaitAll(threadList.ToArray());
         }
 
         [Benchmark]
-        public Task<int> NoThrottle()
+        public void WithTinySemaphore()
         {
-            return Run("/NoThrottle");
+            const string key = "test";
+            const int numThread = 8;
+            var threadList = new List<Task>();
+            var al = new AsyncKeyLock2();
+
+            for (var i = 0; i < numThread; i++)
+            {
+                var t = Task.Factory.StartNew(async () =>
+                {
+                    for (var i = 0; i <= 1000; i++)
+                    {
+                        var r = await al.ReaderLockAsync(key + i);
+                        r.Dispose();
+                    }
+                });
+                threadList.Add(t);
+            }
+
+            Task.WaitAll(threadList.ToArray());
         }
 
         private async Task<int> Run(string path)
